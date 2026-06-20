@@ -9,6 +9,25 @@ from sklearn.metrics import auc
 from constants import aa_dict, tool_name_plot_name_dict
 from utils import calculate_peptide_precision_coverage, calculate_aa_precision_coverage
 
+default_tool_display_names = {
+    "instanovo_v1_1": "InstaNovo v1.1 Zenodo transformer",
+    "instanovo_v1_2": "InstaNovo v1.2.0 transformer",
+}
+
+tool_plot_color_dict = {
+    # Match the published Figure 1 Matplotlib tab10 colours.
+    "msgfplus_percolator": "#1f77b4",
+    "contranovo": "#ff7f0e",
+    "instanovo": "#2ca02c",
+    "instanovo_v1_1": "#2ca02c",
+    "casanovo": "#d62728",
+    "pi_helixnovo": "#9467bd",
+    "novor": "#8c564b",
+    "pepnovoplus": "#e377c2",
+    # New tool/version, intentionally distinct from published InstaNovo v1.1.
+    "instanovo_v1_2": "#17becf",
+}
+
 def get_tool_names_from_columns(df):
     """Extract tool names from columns that follow {toolname}_seq and {toolname}_score pattern"""
     tool_names = set()
@@ -96,8 +115,22 @@ def plot_precision_coverage_curves(result_df, tool_name_dict, benchmark_dataset_
 
     # Plot peptide precision vs. coverage with AUC scores
     plt.figure(figsize=(10, 6))
-    for cov, prec, sc, tool_name, auc_score in sorted(zip(all_peptide_coverages, all_peptide_precisions, all_peptide_scores, tool_name_dict.values(), peptide_auc_scores), key=lambda x: x[4], reverse=True):
-            plt.plot(cov, prec, label=f"{tool_name} (AUC = {auc_score:.3f})", linewidth=3.5)
+    peptide_plot_data = zip(
+        all_peptide_coverages,
+        all_peptide_precisions,
+        all_peptide_scores,
+        tool_name_dict.keys(),
+        tool_name_dict.values(),
+        peptide_auc_scores,
+    )
+    for cov, prec, sc, tool_key, tool_name, auc_score in sorted(peptide_plot_data, key=lambda x: x[5], reverse=True):
+            plt.plot(
+                cov,
+                prec,
+                label=f"{tool_name} (AUC = {auc_score:.3f})",
+                linewidth=3.5,
+                color=tool_plot_color_dict.get(tool_key),
+            )
 
     plt.xlabel("Coverage", fontsize=14)
     plt.ylabel("Precision", fontsize=14)
@@ -119,8 +152,22 @@ def plot_precision_coverage_curves(result_df, tool_name_dict, benchmark_dataset_
 
     # Plot aa precision vs. coverage with AUC scores
     plt.figure(figsize=(10, 6))
-    for cov, prec, sc, tool_name, auc_score in sorted(zip(all_aa_coverages, all_aa_precisions, all_aa_scores, tool_name_dict.values(), aa_auc_scores), key=lambda x: x[4], reverse=True):
-            plt.plot(cov, prec, label=f"{tool_name} (AUC = {auc_score:.3f})", linewidth=3.5)
+    aa_plot_data = zip(
+        all_aa_coverages,
+        all_aa_precisions,
+        all_aa_scores,
+        tool_name_dict.keys(),
+        tool_name_dict.values(),
+        aa_auc_scores,
+    )
+    for cov, prec, sc, tool_key, tool_name, auc_score in sorted(aa_plot_data, key=lambda x: x[5], reverse=True):
+            plt.plot(
+                cov,
+                prec,
+                label=f"{tool_name} (AUC = {auc_score:.3f})",
+                linewidth=3.5,
+                color=tool_plot_color_dict.get(tool_key),
+            )
             
 
     plt.xlabel("Coverage", fontsize=14)
@@ -176,19 +223,21 @@ if __name__ == "__main__":
     available_tools = [tool for tool in available_tools if tool not in excluded_tools]
     print(f"Found tools: {available_tools}")
 
-    # Extend the dictionary with newly discovered tools
+    # Build a plot-name dictionary for only the tools present in the input file.
+    plot_tool_name_dict = {}
     for tool in available_tools:
         if tool not in tool_name_plot_name_dict:
             # Use the tool name as the plot name (or customize as needed)
-            tool_name_plot_name_dict[tool] = tool
+            tool_name_plot_name_dict[tool] = default_tool_display_names.get(tool, tool)
             print(f"Added new tool: {tool}")
+        plot_tool_name_dict[tool] = tool_name_plot_name_dict[tool]
 
-    print(f"Final tool dictionary: {tool_name_plot_name_dict}")
+    print(f"Final tool dictionary: {plot_tool_name_dict}")
     
     # Run analysis
     plot_precision_coverage_curves(
         result_df=result_df,
-        tool_name_dict=tool_name_plot_name_dict,
+        tool_name_dict=plot_tool_name_dict,
         benchmark_dataset_name=args.dataset,
         save_plot_path=args.output,
         save_tables_path=args.tables

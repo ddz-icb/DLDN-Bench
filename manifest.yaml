@@ -1,0 +1,28 @@
+kind: AIchorManifest
+apiVersion: 0.2.3
+
+builder:
+  image: dldn-bench-instanovo-aichor
+  target: dldn-bench-instanovo-aichor
+  dockerfile: ./Dockerfile
+  context: .
+
+spec:
+  operator: pytorch
+  image: dldn-bench-instanovo-aichor
+  command: "env DLDN_COMPARE_ONLY=1 DLDN_SKIP_COMPARE=1 DLDN_RECREATE_PUBLISHED=1 DLDN_INCLUDE_INSTANOVO_V1_2=1 DLDN_SKIP_PLOT_TABLES=1 DLDN_RECOVER_PREDICTIONS_FROM=s3://dtu-denovo-s-2e6da747d6d34f62-outputs/output/9da11897-c921-4b09-beb2-11565dba0e91/ bash scripts/aichor/run_all.sh"
+  tensorboard:
+    enabled: false
+  storage:
+    sharedVolume:
+      mountPoint: "/mnt/storage"
+      sizeGB: 150
+      storageClass: cephfs
+      accessMode: ReadWriteMany
+  types:
+    worker:
+      count: 1
+      resources:
+        cpus: 16
+        ramRatio: 8
+        shmSizeGB: 16

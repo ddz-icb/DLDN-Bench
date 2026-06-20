@@ -30,9 +30,9 @@ def create_result_csv(ground_truth_file_path,
 
     msgfplus_result_df = pd.read_parquet(msgfplus_result_file_path)
 
-    msgfplus_result_df['scannr'] = msgfplus_result_df['psm_id'].apply(lambda x: x.split('_')[-3] if len(x.split('_')) >= 5 else None)
-
-    msgfplus_result_df['pos_index'] = msgfplus_result_df['psm_id'].apply(lambda x: int(x.split('_')[-5]) - 1 if len(x.split('_')) >= 5 else None)
+    psm_id_parts = msgfplus_result_df['psm_id'].astype(str).str.split('_')
+    msgfplus_result_df['scannr'] = psm_id_parts.str[-3]
+    msgfplus_result_df['pos_index'] = pd.to_numeric(psm_id_parts.str[-5], errors='coerce').sub(1)
 
     filter_msgfplus = False
 
@@ -87,24 +87,20 @@ def create_result_csv(ground_truth_file_path,
     # Check if header_line was found
     if header_line is not None:
         # Now read the data from the next line after the header
-        novor_result_df = pd.read_csv(novor_result_file_path, skiprows=header_line + 1, header=None)
-        # Set the column names manually
-        novor_result_df.columns = ['id', 'scanNum', 'RT', 'mz(data)', 'z', 'pepMass(denovo)', 'err(data-denovo)', 'ppm(1e6*err/(mz*z))', 'score', 'peptide', 'aaScore']
+        novor_result_df = pd.read_csv(
+            novor_result_file_path,
+            skiprows=header_line + 1,
+            header=None,
+            usecols=[8, 9],
+            names=['score', 'peptide'],
+        )
     else:
         print("Header line not found.")
 
-    for index, row in novor_result_df.iterrows():
-        peptide = row['peptide']
-
-        # Apply modifications directly within this loop
-        for mod, value in novor_modification_dict.items():
-            peptide = peptide.replace(mod, value)
-
-        # Strip leading and trailing whitespaces
-        peptide = peptide.strip()
-
-        # For demonstration, just updating the peptide back in the DataFrame
-        novor_result_df.at[index, 'peptide'] = peptide
+    novor_result_df['peptide'] = novor_result_df['peptide'].fillna("").astype(str).str.strip()
+    for mod, value in novor_modification_dict.items():
+        novor_result_df['peptide'] = novor_result_df['peptide'].str.replace(mod, value, regex=False)
+    novor_result_df['peptide'] = novor_result_df['peptide'].astype(object)
 
     novor_result_df['pos_index'] = range(len(novor_result_df))
 
@@ -159,13 +155,10 @@ def create_result_csv(ground_truth_file_path,
 
     print('parse ContraNovo prediction file')
 
-    contranovo_result_df = pd.DataFrame()
-
-    for contranovo_result_file_path in contranovo_result_file_path_list:
-
-        curr_contranovo_result_df = parse_file_to_dataframe(contranovo_result_file_path)
-
-        contranovo_result_df = pd.concat([contranovo_result_df, curr_contranovo_result_df], ignore_index=True)
+    contranovo_result_df = pd.concat(
+        [parse_file_to_dataframe(path) for path in contranovo_result_file_path_list],
+        ignore_index=True,
+    )
 
 
     ## only keep prediction with highest score per title
@@ -196,12 +189,34 @@ def create_result_csv(ground_truth_file_path,
 
     instanovo_result_df['pos_index'] = range(len(instanovo_result_df))
 
-    instanovo_result_df.rename(columns={'transformer_predictions':'instanovo_seq', 'transformer_log_probabilities':'instanovo_score', 
-                                'diffusion_predictions':'instanovoplus_seq', 'diffusion_log_probabilities':'instanovoplus_score'}, inplace=True)
+    instanovo_columns = instanovo_result_df.columns.tolist()
+    if 'transformer_predictions' in instanovo_columns and 'transformer_log_probabilities' in instanovo_columns:
+        instanovo_result_df.rename(columns={
+            'transformer_predictions': 'instanovo_seq',
+            'transformer_log_probabilities': 'instanovo_score',
+        }, inplace=True)
+    elif 'predictions' in instanovo_columns and 'log_probabilities' in instanovo_columns:
+        instanovo_result_df.rename(columns={
+            'predictions': 'instanovo_seq',
+            'log_probabilities': 'instanovo_score',
+        }, inplace=True)
+    else:
+        raise ValueError(
+            f"Unsupported InstaNovo schema for {instanovo_result_file_path}. "
+            f"Columns: {instanovo_columns}"
+        )
+
+    has_instanovoplus = (
+        'diffusion_predictions' in instanovo_columns
+        and 'diffusion_log_probabilities' in instanovo_columns
+    )
+    if has_instanovoplus:
+        instanovo_result_df.rename(columns={
+            'diffusion_predictions': 'instanovoplus_seq',
+            'diffusion_log_probabilities': 'instanovoplus_score',
+        }, inplace=True)
 
     instanovo_df = instanovo_filter_out_unspecified_mods(instanovo_result_df, unimod_dict, 'instanovo') # parse mods to expected format + filter out predictions with unspecified mods
-
-    instanovoplus_df = instanovo_filter_out_unspecified_mods(instanovo_result_df, unimod_dict, 'instanovoplus') # parse mods to expected format + filter out predictions with unspecified mods
 
     # extract relevant cols and merge
     
@@ -209,9 +224,12 @@ def create_result_csv(ground_truth_file_path,
 
     merged_df = merged_df.merge(instanovo_df, how='inner', on='pos_index')
 
-    instanovoplus_df = instanovoplus_df[['pos_index', 'instanovoplus_seq', 'instanovoplus_score']]
+    if has_instanovoplus:
+        instanovoplus_df = instanovo_filter_out_unspecified_mods(instanovo_result_df, unimod_dict, 'instanovoplus') # parse mods to expected format + filter out predictions with unspecified mods
 
-    merged_df = merged_df.merge(instanovoplus_df, how='inner', on='pos_index')
+        instanovoplus_df = instanovoplus_df[['pos_index', 'instanovoplus_seq', 'instanovoplus_score']]
+
+        merged_df = merged_df.merge(instanovoplus_df, how='inner', on='pos_index')
 
     ####################### additional result file #######################
 
@@ -221,12 +239,25 @@ def create_result_csv(ground_truth_file_path,
 
         additional_result_df = pd.read_csv(additional_result_file_path)
 
-        additional_result_df['pos_index'] = range(len(additional_result_df))
+        if 'scan_number' in additional_result_df.columns:
+            additional_result_df['pos_index'] = additional_result_df['scan_number'].astype(int)
+        else:
+            additional_result_df['pos_index'] = range(len(additional_result_df))
 
         # Use the same format as InstaNovo - expecting 'predictions' and 'probabilities' columns
-        if 'predictions' in additional_result_df.columns and 'scores' in additional_result_df.columns:
-            additional_result_df.rename(columns={'predictions': f'{additional_result_name}_seq', 
-                                               'scores': f'{additional_result_name}_score'}, inplace=True)
+        if 'predictions' in additional_result_df.columns:
+            additional_score_candidates = ['scores', 'log_probs', 'log_probabilities', 'score']
+            additional_score_col = next(
+                (col for col in additional_score_candidates if col in additional_result_df.columns),
+                None,
+            )
+            if additional_score_col is None:
+                raise ValueError(
+                    f"Could not find a score column for {additional_result_name}. "
+                    f"Columns: {additional_result_df.columns.tolist()}"
+                )
+            additional_result_df.rename(columns={'predictions': f'{additional_result_name}_seq',
+                                               additional_score_col: f'{additional_result_name}_score'}, inplace=True)
         else:
             # Alternative: look for common column names and rename them
             # This assumes the file has 'sequence' and 'score' columns or similar
