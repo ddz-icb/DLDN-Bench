@@ -21,6 +21,8 @@ Usage:
 import argparse
 import re
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for CLI
 import matplotlib.pyplot as plt
 from matplotlib_venn import venn2, venn3, venn2_circles, venn3_circles
 import numpy as np
@@ -269,7 +271,7 @@ def create_pyvenn_diagram(sets_dict, labels, title, output_file, figsize=(12, 10
     """
     if not PYVENN_AVAILABLE:
         print("\nError: pyvenn is required for 4-6 way Venn diagrams")
-        print("Please install it with: pip install pyvenn")
+        print("Please install it with: pip install venn==0.1.3 (or recreate the environment from environment.yml)")
         sys.exit(1)
     
     n_sets = len(labels)

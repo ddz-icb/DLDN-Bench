@@ -1,5 +1,22 @@
 # Benchmarking & Evaluation of Deep Learning - based De Novo Peptide Sequencing Models
 
+## Installation
+
+Create the conda environment (works on Linux, macOS and Windows):
+
+```bash
+conda env create -f environment.yml
+conda activate De_novo_eval
+```
+
+`environment.yml` pins the direct dependencies to the versions used for the published results. The exact Linux environment used to produce the published results is provided in `environment_linux-64.yml` (Linux x86-64 only).
+
+To run the tests:
+
+```bash
+python -m unittest discover -s tests
+```
+
 ## General process
 
 1. Get the Evaluation Datasets (Benchmark MGF files) and the prediction files from the models which are uploaded on Zenodo: https://doi.org/10.5281/zenodo.19627459 and apply your new De Novo Model to the Evaluation Datasets (Benchmark Datasets) to get predictions
