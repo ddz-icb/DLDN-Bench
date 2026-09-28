@@ -20,8 +20,10 @@ def get_tool_names_from_columns(df):
             # Check if corresponding '_score' column exists
             if f'{tool_name}_score' in df.columns:
                 tool_names.add(tool_name)
+            else:
+                print(f"Warning: skipping '{tool_name}' because column '{tool_name}_score' is missing")
     
-    return list(tool_names)
+    return sorted(tool_names)
 
 def plot_precision_coverage_curves(result_df, tool_name_dict, benchmark_dataset_name=None, save_plot_path=None, save_tables_path=None):
 
@@ -38,7 +40,15 @@ def plot_precision_coverage_curves(result_df, tool_name_dict, benchmark_dataset_
     Returns:
         dict: Summary statistics including AUC scores
     """
-  
+
+    # Validate that all required columns are present before any processing
+    required_columns = ['groundtruth_seq'] + [f'{tool}_{suffix}' for tool in tool_name_dict for suffix in ('seq', 'score')]
+    missing_columns = [col for col in required_columns if col not in result_df.columns]
+    if missing_columns:
+        raise ValueError(f"Input is missing required columns: {missing_columns}. "
+                         f"Each evaluated tool needs '{{toolname}}_seq' and '{{toolname}}_score' columns. "
+                         f"Available columns: {list(result_df.columns)}")
+
     # drop rows with NaN predictions that can occur in InstaNovo+
   
     if 'instanovoplus' in tool_name_dict.keys():
@@ -168,27 +178,41 @@ if __name__ == "__main__":
     # Load data
     result_df = pd.read_csv(args.input)
     
+    if 'groundtruth_seq' not in result_df.columns:
+        parser.error(f"Input file '{args.input}' has no 'groundtruth_seq' column.")
+
     # Get all available tools dynamically
     available_tools = get_tool_names_from_columns(result_df)
 
     # Filter out instanovoplus because not recent version was available
     excluded_tools = ['instanovoplus']  # Add any other tools you want to exclude
+    skipped_tools = [tool for tool in available_tools if tool in excluded_tools]
     available_tools = [tool for tool in available_tools if tool not in excluded_tools]
     print(f"Found tools: {available_tools}")
+    if skipped_tools:
+        print(f"Excluded tools: {skipped_tools}")
 
-    # Extend the dictionary with newly discovered tools
-    for tool in available_tools:
+    if not available_tools:
+        parser.error(f"No tool predictions to evaluate in '{args.input}' (excluded: {skipped_tools}). "
+                     "Expected column pairs named '{toolname}_seq' and '{toolname}_score'.")
+
+    # Evaluate only the tools present in the input; use known plot names where available.
+    # Known tools keep the order of constants.py (reproduces the original output tables), new tools follow.
+    ordered_tools = [tool for tool in tool_name_plot_name_dict if tool in available_tools] + \
+                    [tool for tool in available_tools if tool not in tool_name_plot_name_dict]
+    tool_name_dict = {}
+    for tool in ordered_tools:
         if tool not in tool_name_plot_name_dict:
             # Use the tool name as the plot name (or customize as needed)
-            tool_name_plot_name_dict[tool] = tool
             print(f"Added new tool: {tool}")
+        tool_name_dict[tool] = tool_name_plot_name_dict.get(tool, tool)
 
-    print(f"Final tool dictionary: {tool_name_plot_name_dict}")
-    
+    print(f"Final tool dictionary: {tool_name_dict}")
+
     # Run analysis
     plot_precision_coverage_curves(
         result_df=result_df,
-        tool_name_dict=tool_name_plot_name_dict,
+        tool_name_dict=tool_name_dict,
         benchmark_dataset_name=args.dataset,
         save_plot_path=args.output,
         save_tables_path=args.tables
