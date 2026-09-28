@@ -10,7 +10,10 @@ Constants and mappings for the result files + further processing
 # "-17.027" # NH3 loss
 # "+43.006-17.027" # Carbamylation and NH3 loss
 
-modification_dict = {'+0.984':'',           
+# Modifications that are not present in the ground truth (see aa_dict below). Predictions containing any of
+# these are excluded from the evaluation (see utils.modify_de_novo_result_with_filter_out_df), not converted.
+# Only the keys are used; the values are ignored.
+modification_dict = {'+0.984':'',
                      '+43.006':'',
                      '-17.027':'',
                      '+43.006-17.027':''}

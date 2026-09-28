@@ -19,6 +19,20 @@ import matplotlib.pyplot as plt
 from calculate_criteria import aa_match_batch
 
 def modify_de_novo_result_with_filter_out_df(result_df, mod_dict):
+  """
+  Split de novo predictions into evaluable and non-evaluable predictions based on their numeric modifications.
+
+  This filtering is intentional: the ground truth only contains the modifications listed in aa_dict
+  (constants.py). Predictions containing a modification listed in mod_dict (e.g. deamidation +0.984,
+  carbamylation +43.006, NH3 loss -17.027) can therefore not be evaluated against the ground truth and are
+  excluded instead of being converted, since stripping the modification would credit a residue whose mass
+  does not match the prediction. Only the keys of mod_dict are used; its values are ignored.
+  Supported modifications (e.g. M+15.995, C+57.021, +42.011) are kept unchanged.
+
+  Returns:
+    unaffected_df: predictions without any modification from mod_dict (used for evaluation)
+    affected_df: predictions containing at least one modification from mod_dict (excluded)
+  """
 
   modified_seqs = []
   unmodified_seqs = []
@@ -52,9 +66,13 @@ def modify_de_novo_result_with_filter_out_df(result_df, mod_dict):
   affected_df = result_df[mask]
   unaffected_df = result_df[~mask]
 
+  # Guard against division by zero when no (modified) predictions are present
+  percent_replaced = num_replaced / total_matches * 100 if total_matches > 0 else 0.0
+  percent_affected = num_affected / len(result_df) * 100 if len(result_df) > 0 else 0.0
+
   print(f"Num replaced: {num_replaced}")
-  print(f"Percent replaced: {num_replaced/total_matches*100:.2f}%")
-  print(f"Percent affected: {num_affected/len(result_df)*100:.2f}%")
+  print(f"Percent replaced: {percent_replaced:.2f}%")
+  print(f"Percent affected: {percent_affected:.2f}%")
 
   return unaffected_df, affected_df
 
