@@ -1,0 +1,8 @@
+tool,peptide_auc,aa_auc
+msgfplus_percolator,0.999,0.999
+pepnovoplus,0.134,0.376
+novor,0.256,0.653
+casanovo,0.822,0.923
+pi_helixnovo,0.720,0.876
+contranovo,0.882,0.952
+instanovo,0.820,0.903

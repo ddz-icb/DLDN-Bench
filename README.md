@@ -17,6 +17,12 @@ To run the tests:
 python -m unittest discover -s tests
 ```
 
+This includes an end-to-end test on a minimal test dataset (`tests/data/`, 1,000 PSMs sampled from PXD043425). To additionally reproduce the reported precision-coverage AUCs of PXD043425, create its aligned predictions with `create_result_csv.py` (see below) and run (~6 min):
+
+```bash
+DE_NOVO_EVAL_FULL_CSV=/path/to/PXD043425_benchmark_predictions.csv python -m unittest discover -s tests
+```
+
 ## General process
 
 1. Get the Evaluation Datasets (Benchmark MGF files) and the prediction files from the models which are uploaded on Zenodo: https://doi.org/10.5281/zenodo.19627459 and apply your new De Novo Model to the Evaluation Datasets (Benchmark Datasets) to get predictions

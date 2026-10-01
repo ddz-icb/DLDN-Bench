@@ -159,6 +159,13 @@ def plot_precision_coverage_curves(result_df, tool_name_dict, benchmark_dataset_
         aa_df.to_csv(f'{save_tables_path}/{benchmark_dataset_name}_aminoacid_precision_coverage.csv', index=False)
 
         print(f'Table files saved: {save_tables_path}/{benchmark_dataset_name}_peptide_precision_coverage.csv and{save_tables_path}/{benchmark_dataset_name}_aminoacid_precision_coverage.csv')
+
+        # Save the AUC scores shown in the plot legends
+        auc_df = pd.DataFrame({'tool': list(tool_name_dict.keys()),
+                               'peptide_auc': peptide_auc_scores,
+                               'aa_auc': aa_auc_scores})
+        auc_df.to_csv(f'{save_tables_path}/{benchmark_dataset_name}_auc.csv', index=False)
+        print(f'AUC scores saved: {save_tables_path}/{benchmark_dataset_name}_auc.csv')
         
 
 if __name__ == "__main__":
