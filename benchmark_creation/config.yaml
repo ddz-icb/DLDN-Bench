@@ -1,0 +1,15 @@
+# PRIDE accession of the dataset
+accession: PXD043425
+
+# Raw files to process. Leave empty ([]) to process all raw files of the accession.
+raw_files:
+  - 29052019_C18P_7856_AT18_basal_2h_DDA_1.raw   # basal
+  - 29052019_C18P_7862_AT18_60_2h_DDA_1.raw      # insulin (60 min)
+
+# MSFragger 4.0 jar (requires accepting the academic license: https://msfragger.nesvilab.org)
+msfragger_jar: /path/to/MSFragger-4.0/MSFragger-4.0.jar
+msfragger_memory: 20G
+
+# ProteoWizard msconvert container (run with Apptainer)
+msconvert_container: docker://proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.25034-b186be1
+

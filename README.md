@@ -23,6 +23,10 @@ This includes an end-to-end test on a minimal test dataset (`tests/data/`, 1,000
 DE_NOVO_EVAL_FULL_CSV=/path/to/PXD043425_benchmark_predictions.csv python -m unittest discover -s tests
 ```
 
+## Creating benchmark datasets
+
+The benchmark datasets were created from PRIDE datasets by searching them with Comet and MSFragger and keeping the spectra identified identically by both. This is provided as a Snakemake workflow in [`benchmark_creation/`](benchmark_creation/README.md).
+
 ## General process
 
 1. Get the Evaluation Datasets (Benchmark MGF files) and the prediction files from the models which are uploaded on Zenodo: https://doi.org/10.5281/zenodo.19627459 and apply your new De Novo Model to the Evaluation Datasets (Benchmark Datasets) to get predictions

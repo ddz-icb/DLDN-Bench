@@ -1,0 +1,179 @@
+"""
+Create an annotated benchmark dataset (MGF) from a PRIDE dataset:
+download raw files -> msconvert (MGF) -> Comet + MSFragger -> Percolator -> spectra identified identically by both.
+
+Usage (see README):
+    snakemake -s benchmark_creation/Snakefile --configfile config.yaml --directory /path/to/run_dir --cores 16
+"""
+import json
+import lzma
+import os
+import shutil
+import urllib.request
+
+ACCESSION = config['accession']
+SCRIPTS = os.path.join(workflow.basedir, 'scripts')
+PARAMS = os.path.join(workflow.basedir, 'params')
+# UniProt human reference proteome UP000005640 (2024-01-10) used for the published datasets
+FASTA_XZ = os.path.join(workflow.basedir, 'database', 'uniprotkb_proteome_UP000005640_2024_01_10.fasta.xz')
+
+
+def get_raw_files():
+    """Raw files of the accession with their HTTPS download URL and size, from the PRIDE API."""
+    url = f'https://www.ebi.ac.uk/pride/ws/archive/v3/projects/{ACCESSION}/files/all'
+    with urllib.request.urlopen(url) as response:
+        files = json.load(response)
+    raw_files = {}
+    for f in files:
+        if f.get('fileCategory', {}).get('value') != 'RAW':
+            continue
+        ftp = [loc['value'] for loc in f['publicFileLocations'] if loc['value'].startswith('ftp://')][0]
+        raw_files[f['fileName']] = {'url': ftp.replace('ftp://', 'https://', 1), 'size': f['fileSizeBytes']}
+    selected = config.get('raw_files') or sorted(raw_files)
+    missing = [name for name in selected if name not in raw_files]
+    if missing:
+        raise ValueError(f'Raw files not found in {ACCESSION}: {missing}')
+    return {os.path.splitext(name)[0]: raw_files[name] for name in selected}
+
+
+RAW_FILES = get_raw_files()
+SAMPLES = sorted(RAW_FILES)
+
+
+rule all:
+    input:
+        f'results/{ACCESSION}_benchmark_dataset.mgf'
+
+
+rule download:
+    output:
+        'raw/{sample}.raw'
+    params:
+        url=lambda wc: RAW_FILES[wc.sample]['url'],
+        size=lambda wc: RAW_FILES[wc.sample]['size']
+    retries: 3
+    shell:
+        """
+        curl -fsSL -o {output}.part {params.url}
+        if [ "$(stat -c %s {output}.part)" != "{params.size}" ]; then echo "Size mismatch for {output}" >&2; exit 1; fi
+        mv {output}.part {output}
+        """
+
+
+rule msconvert:
+    # Settings of the original conversion (MSConvertGUI 3.0.25011): MGF, 64-bit, zlib, TPP compatibility (titleMaker),
+    # vendor peak picking on all MS levels
+    input:
+        'raw/{sample}.raw'
+    output:
+        'mgf/{sample}.mgf'
+    params:
+        container=config['msconvert_container']
+    shell:
+        """
+        apptainer exec --cleanenv --writable-tmpfs -B "$PWD":/data --pwd /data {params.container} \
+            mywine msconvert {input} -o mgf --mgf --64 --zlib \
+            --filter "peakPicking vendor msLevel=1-" \
+            --filter 'titleMaker <RunId>.<ScanNumber>.<ScanNumber>.<ChargeState> File:"<SourcePath>", NativeID:"<Id>"'
+        # This msconvert version writes an empty line between PEPMASS and CHARGE, which MSFragger cannot read
+        sed -i '/^$/d' {output}
+        """
+
+
+rule target_database:
+    input:
+        FASTA_XZ
+    output:
+        'database/target.fasta'
+    run:
+        with lzma.open(input[0], 'rb') as f_in, open(output[0], 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
+
+rule comet:
+    input:
+        mgf='mgf/{sample}.mgf',
+        params=os.path.join(PARAMS, 'comet.params'),
+        fasta='database/target.fasta'
+    output:
+        'search/comet/{sample}.pin'
+    threads: workflow.cores
+    log:
+        'logs/comet/{sample}.log'
+    shell:
+        'comet -P{input.params} -D{input.fasta} -Nsearch/comet/{wildcards.sample} {input.mgf} > {log} 2>&1'
+
+
+rule target_decoy_database:
+    # MSFragger needs a database containing decoys: the target proteins followed by the reversed proteins
+    # (prefix XXX_, sequence on one line), the format of the target-decoy database created by MS-GF+
+    input:
+        'database/target.fasta'
+    output:
+        'database/target_decoy.fasta'
+    run:
+        entries = []
+        with open(input[0]) as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if line.startswith('>'):
+                    entries.append([line, []])
+                elif line:
+                    entries[-1][1].append(line)
+        with open(output[0], 'w') as f:
+            for header, lines in entries:
+                f.write(header + '\n' + '\n'.join(lines) + '\n')
+            for header, lines in entries:
+                f.write('>XXX_' + header[1:] + '\n' + ''.join(lines)[::-1] + '\n')
+
+
+rule msfragger:
+    # All files are searched together, as in the original search (MSFragger calibrates and optimises its parameters
+    # on all files of a run)
+    input:
+        mgf=expand('mgf/{sample}.mgf', sample=SAMPLES),
+        params=os.path.join(PARAMS, 'closed_fragger.params'),
+        fasta='database/target_decoy.fasta'
+    output:
+        expand('search/msfragger/{sample}.pin', sample=SAMPLES)
+    params:
+        jar=config['msfragger_jar'],
+        memory=config['msfragger_memory']
+    threads: workflow.cores
+    log:
+        'logs/msfragger.log'
+    shell:
+        """
+        mkdir -p search/msfragger
+        sed 's|^database_name = DATABASE_PLACEHOLDER|database_name = {input.fasta}|' {input.params} > search/msfragger/fragger.params
+        java -Xmx{params.memory} -jar {params.jar} search/msfragger/fragger.params {input.mgf} > {log} 2>&1
+        for f in {input.mgf}; do mv "${{f%.mgf}}.pin" search/msfragger/; done
+        """
+
+
+rule percolator:
+    input:
+        'search/{engine}/{sample}.pin'
+    output:
+        'percolator/{engine}/{engine}_perc_{sample}.xml'
+    log:
+        'logs/percolator/{engine}_{sample}.log'
+    shell:
+        'percolator {input} -X {output} > {log} 2>&1'
+
+
+rule benchmark_dataset:
+    input:
+        comet=expand('percolator/comet/comet_perc_{sample}.xml', sample=SAMPLES),
+        msfragger=expand('percolator/msfragger/msfragger_perc_{sample}.xml', sample=SAMPLES),
+        mgf=expand('mgf/{sample}.mgf', sample=SAMPLES)
+    output:
+        mgf=f'results/{ACCESSION}_benchmark_dataset.mgf',
+        venn=f'results/{ACCESSION}_search_engine_overlap.png'
+    log:
+        'logs/benchmark_dataset.log'
+    shell:
+        """
+        python {SCRIPTS}/create_benchmark_mgf.py --comet {input.comet} --msfragger {input.msfragger} \
+            --mgf-dir mgf --output {output.mgf} --venn {output.venn} > {log} 2>&1
+        """

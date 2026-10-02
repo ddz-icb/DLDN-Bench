@@ -1,0 +1,17 @@
+# Environment for the benchmark dataset creation workflow (Linux).
+# Additionally required: Apptainer (msconvert container) and the MSFragger 4.0 jar (see README).
+name: De_novo_benchmark_creation
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.13
+  - snakemake-minimal=9.27.0
+  - comet-ms=2023012       # Comet 2023.01 rev. 2
+  - openjdk=11             # for MSFragger
+  - percolator=3.6.5       # Percolator 3.06.5 (results identical to 3.06.4 used originally)
+  - lxml=5.3.1
+  - matplotlib=3.10.0
+  - matplotlib-venn=1.1.1
+  - pandas=2.2.3
+  - pyteomics=4.7.5
