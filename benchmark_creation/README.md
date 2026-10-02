@@ -25,7 +25,7 @@ The protein database used for the published datasets is included in [`database/`
 conda env create -f benchmark_creation/environment.yml
 conda activate De_novo_benchmark_creation
 
-# copy and edit the config: accession, raw files (empty = all), FASTA and MSFragger paths
+# copy and edit the config: accession, raw files (empty = all) and MSFragger path
 cp benchmark_creation/config.yaml /path/to/run_dir/config.yaml
 
 snakemake -s benchmark_creation/Snakefile --configfile /path/to/run_dir/config.yaml --directory /path/to/run_dir --cores 16

@@ -82,4 +82,4 @@ The benchmark datasets were created from PRIDE datasets by searching them with C
 ```
 
 ## Providing new Datasets
-If you want to provide new datasets where you want to benchmark the models on, just exchange the "-gt" with you annotated mgf file which contains a "seq" key which holds the "ground-truth" peptide sequence. Moreover you need the prediction files / outputs from the other models and can provide them via the other command-line arguments as shown in 3.
+If you want to provide new datasets where you want to benchmark the models on, just exchange the "-gt" with you annotated mgf file which contains a "seq" key which holds the "ground-truth" peptide sequence. Such an annotated mgf file can be created from a PRIDE dataset in the same way as the published benchmark datasets with the workflow in [`benchmark_creation/`](benchmark_creation/README.md). Moreover you need the prediction files / outputs from the other models and can provide them via the other command-line arguments as shown in 3.
