@@ -54,7 +54,8 @@ rule download:
     retries: 3
     shell:
         """
-        curl -fsSL -o {output}.part {params.url}
+        # PRIDE sometimes closes connections during large downloads: resume (-C -) instead of restarting
+        curl -fsSL --retry 10 --retry-delay 30 --retry-all-errors -C - -o {output}.part {params.url}
         if [ "$(stat -c %s {output}.part)" != "{params.size}" ]; then echo "Size mismatch for {output}" >&2; exit 1; fi
         mv {output}.part {output}
         """
