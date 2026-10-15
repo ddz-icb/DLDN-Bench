@@ -1,0 +1,14 @@
+# MS-GF+ v2023.01.12 and Percolator 3.06 (incl. msgf2pin)
+name: denovo_msgfplus
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.13
+  - msgf_plus=2023.01.1202
+  - percolator=3.6.5
+  - openjdk=11
+  - lxml=5.3.1
+  - pandas=2.2.3
+  - pyarrow=21.0.0
+  - pyteomics=4.7.5

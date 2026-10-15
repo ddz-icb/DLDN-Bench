@@ -27,6 +27,10 @@ DE_NOVO_EVAL_FULL_CSV=/path/to/PXD043425_benchmark_predictions.csv python -m uni
 
 The benchmark datasets were created from PRIDE datasets by searching them with Comet and MSFragger and keeping the spectra identified identically by both. This is provided as a Snakemake workflow in [`benchmark_creation/`](benchmark_creation/README.md).
 
+## Running the benchmarked tools
+
+The database search (MS-GF+) and the de novo sequencing tools of the benchmark can be run on a benchmark dataset with the settings of the published benchmark, followed by the evaluation, with the Snakemake workflow in [`denovo_benchmark/`](denovo_benchmark/README.md).
+
 ## General process
 
 1. Get the Evaluation Datasets (Benchmark MGF files) and the prediction files from the models which are uploaded on Zenodo: https://doi.org/10.5281/zenodo.19627459 and apply your new De Novo Model to the Evaluation Datasets (Benchmark Datasets) to get predictions

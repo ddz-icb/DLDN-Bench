@@ -1,0 +1,349 @@
+"""
+Run the database search and de novo sequencing tools on an annotated benchmark dataset with the settings of the
+published benchmark and evaluate their predictions with the evaluation scripts of this repository.
+
+Usage (see README):
+    snakemake -s denovo_benchmark/Snakefile --configfile config.yaml --directory /path/to/run_dir \
+        --sdm conda --cores 16 --resources gpu=1
+"""
+import os
+
+DATASET = config['dataset']
+BASE = workflow.basedir
+REPO = os.path.dirname(BASE)
+SCRIPTS = os.path.join(BASE, 'scripts')
+PARAMS = os.path.join(BASE, 'params')
+ENVS = os.path.join(BASE, 'envs')
+EVAL_ENV = os.path.join(REPO, 'environment.yml')
+
+# UniProt human reference proteome used for the published datasets (shared with the benchmark_creation workflow)
+FASTA_XZ = os.path.join(REPO, 'benchmark_creation', 'database', 'uniprotkb_proteome_UP000005640_2024_01_10.fasta.xz')
+
+# Tools and models used for the published benchmark (official sources, verified by MD5)
+DENOVOGUI_URL = 'https://genesis.ugent.be/maven2/com/compomics/denovogui/DeNovoGUI/1.16.8/DeNovoGUI-1.16.8-mac_and_linux.tar.gz'
+DENOVOGUI_MD5 = '4372fa8b110995ef10cc021aed853862'
+CONTRANOVO_REPO, CONTRANOVO_COMMIT = 'https://github.com/BEAM-Labs/ContraNovo.git', '503fdb3'
+CONTRANOVO_CKPT_URL = 'https://drive.usercontent.google.com/download?id=1knNUqSwPf98j388Ds2E6bG8tAXx8voWR&export=download&confirm=t'
+CONTRANOVO_CKPT_MD5 = '3279495525f59e133fd0a0a12b4c0dd6'
+PIHELIXNOVO_REPO, PIHELIXNOVO_COMMIT = 'https://github.com/PHOENIXcenter/pi-HelixNovo.git', '47983d7'
+PIHELIXNOVO_WEIGHTS_URL = 'https://zenodo.org/api/records/10405582/files/Model-weights.zip/content'
+PIHELIXNOVO_CKPT = 'human-epoch-12-step-550000.ckpt'
+PIHELIXNOVO_CKPT_MD5 = '78637cf815b81c40396557149c945ca6'
+
+
+rule all:
+    input:
+        f'results/{DATASET}_peptide_precision_coverage.png',
+        f'results/{DATASET}_auc.csv'
+
+
+########################## input and resources ##########################
+
+rule benchmark_subset:
+    input:
+        config['benchmark_mgf']
+    # random subset of n_spectra spectra; the search MGF contains the subset first, followed by all other spectra
+    output:
+        subset=f'data/{DATASET}.mgf',
+        search=f'data/{DATASET}_search.mgf'
+    params:
+        n=config['n_spectra'],
+        seed=config['seed']
+    log:
+        'logs/benchmark_subset.log'
+    shell:
+        'python {SCRIPTS}/subset_mgf.py {input} {output.subset} {output.search} {params.n} {params.seed} > {log} 2>&1'
+
+
+rule target_database:
+    input:
+        FASTA_XZ
+    output:
+        'database/target.fasta'
+    shell:
+        'xz -dc {input} > {output}'
+
+
+rule decoy_database:
+    # Reversed proteins with prefix DECOY_ (identical to the decoy database used for the published MS-GF+ search)
+    input:
+        'database/target.fasta'
+    output:
+        'database/decoy_only.fasta'
+    log:
+        'logs/decoy_database.log'
+    conda:
+        os.path.join(ENVS, 'msgfplus.yaml')
+    shell:
+        """python -c "from pyteomics import fasta; fasta.write_decoy_db('{input}', '{output}', mode='reverse', prefix='DECOY_', decoy_only=True)" > {log} 2>&1"""
+
+
+rule download_denovogui:
+    output:
+        directory('tools/DeNovoGUI-1.16.8')
+    shell:
+        """
+        curl -fsSL --retry 5 -o tools/denovogui.tar.gz {DENOVOGUI_URL}
+        echo "{DENOVOGUI_MD5}  tools/denovogui.tar.gz" | md5sum -c
+        tar -xzf tools/denovogui.tar.gz -C tools && rm tools/denovogui.tar.gz
+        """
+
+
+rule download_contranovo:
+    output:
+        code=directory('tools/ContraNovo'),
+        ckpt='tools/ContraNovo.ckpt'
+    shell:
+        """
+        git clone -q {CONTRANOVO_REPO} {output.code} && git -C {output.code} checkout -q {CONTRANOVO_COMMIT}
+        # Changes of the original run: n_beams = 1 and output of the predictions with per-position scores
+        git -C {output.code} apply {BASE}/patches/contranovo_503fdb3.patch
+        curl -fsSL --retry 5 -o {output.ckpt} "{CONTRANOVO_CKPT_URL}"
+        echo "{CONTRANOVO_CKPT_MD5}  {output.ckpt}" | md5sum -c
+        """
+
+
+rule download_pihelixnovo:
+    output:
+        code=directory('tools/pi-HelixNovo'),
+        ckpt=f'tools/{PIHELIXNOVO_CKPT}'
+    shell:
+        """
+        git clone -q {PIHELIXNOVO_REPO} {output.code} && git -C {output.code} checkout -q {PIHELIXNOVO_COMMIT}
+        # only the required checkpoint is downloaded from the 11 GB archive
+        python {SCRIPTS}/fetch_zip_member.py {PIHELIXNOVO_WEIGHTS_URL} Model-weights/pi-HelixNovo/{PIHELIXNOVO_CKPT} {output.ckpt}
+        echo "{PIHELIXNOVO_CKPT_MD5}  {output.ckpt}" | md5sum -c
+        """
+
+
+########################## database search ##########################
+
+rule msgfplus:
+    # Target and decoy database are searched separately, as for the published benchmark. The search uses the complete
+    # benchmark dataset (not only the n_spectra subset), as Percolator needs enough PSMs: with only a few thousand
+    # benchmark spectra, which are all confidently identified, it stops with "too good separation between target and
+    # decoy PSMs". The subset spectra come first in the searched file, so the evaluation (which matches the MS-GF+ PSMs
+    # by position) only uses the PSMs of the subset.
+    input:
+        mgf=f'data/{DATASET}_search.mgf',
+        fasta=lambda wc: 'database/target.fasta' if wc.db == 'target' else 'database/decoy_only.fasta',
+        mods=os.path.join(PARAMS, 'msgfplus_mods.txt')
+    output:
+        f'msgfplus/{DATASET}_{{db}}.mzid'
+    params:
+        memory=config['msgfplus_memory']
+    threads: workflow.cores
+    log:
+        f'logs/msgfplus_{{db}}.log'
+    conda:
+        os.path.join(ENVS, 'msgfplus.yaml')
+    shell:
+        """
+        msgf_plus -Xmx{params.memory} -s {input.mgf} -d {input.fasta} -o {output} -mod {input.mods} \
+            -t 10ppm -ti -1,2 -tda 0 -m 0 -inst 1 -e 1 -protocol 0 -ntt 2 -minLength 6 -maxLength 120 \
+            -minCharge 2 -maxCharge 6 -n 1 -addFeatures 1 -thread {threads} > {log} 2>&1
+        """
+
+
+rule msgfplus_percolator:
+    input:
+        target=f'msgfplus/{DATASET}_target.mzid',
+        decoy=f'msgfplus/{DATASET}_decoy.mzid'
+    output:
+        pin=f'msgfplus/{DATASET}.pin',
+        xml=f'msgfplus/{DATASET}_percolator.xml',
+        parquet=f'predictions/{DATASET}_msgfplus_pred.parquet'
+    log:
+        'logs/msgfplus_percolator.log'
+    conda:
+        os.path.join(ENVS, 'msgfplus.yaml')
+    shell:
+        """
+        msgf2pin -o {output.pin} {input.target} {input.decoy} > {log} 2>&1
+        percolator {output.pin} -X {output.xml} >> {log} 2>&1
+        python {SCRIPTS}/percolator_to_parquet.py {output.xml} {output.parquet} >> {log} 2>&1
+        """
+
+
+########################## de novo sequencing ##########################
+
+rule pepnovo_input:
+    # PepNovo+ is run on the benchmark dataset without the SEQ field
+    input:
+        f'data/{DATASET}.mgf'
+    output:
+        f'data/{DATASET}_for_pepnovoplus.mgf'
+    log:
+        'logs/pepnovo_input.log'
+    conda:
+        os.path.join(ENVS, 'msgfplus.yaml')
+    shell:
+        'python {SCRIPTS}/remove_seq.py {input} {output} > {log} 2>&1'
+
+
+rule pepnovo:
+    input:
+        mgf=f'data/{DATASET}_for_pepnovoplus.mgf',
+        denovogui='tools/DeNovoGUI-1.16.8',
+        params=os.path.join(PARAMS, 'pepnovoplus.par')
+    output:
+        f'predictions/{DATASET}_pepnovoplus_pred.txt'
+    threads: workflow.cores
+    log:
+        'logs/pepnovo.log'
+    conda:
+        os.path.join(ENVS, 'denovogui.yaml')
+    shell:
+        """
+        rm -rf pepnovo && mkdir -p pepnovo
+        java -Djava.awt.headless=true -cp {input.denovogui}/DeNovoGUI-1.16.8.jar com.compomics.denovogui.cmd.DeNovoCLI \
+            -spectrum_files {input.mgf} -output_folder pepnovo -id_params {input.params} \
+            -pepnovo 1 -novor 0 -directag 0 -pnovo 0 -threads {threads} > {log} 2>&1
+        mv pepnovo/{DATASET}_for_pepnovoplus.mgf.out {output}
+        """
+
+
+rule novor:
+    input:
+        mgf=f'data/{DATASET}.mgf',
+        denovogui='tools/DeNovoGUI-1.16.8',
+        params=os.path.join(PARAMS, 'novor.par')
+    output:
+        f'predictions/{DATASET}_novor_pred.csv'
+    threads: workflow.cores
+    log:
+        'logs/novor.log'
+    conda:
+        os.path.join(ENVS, 'denovogui.yaml')
+    shell:
+        """
+        rm -rf novor && mkdir -p novor
+        java -Djava.awt.headless=true -cp {input.denovogui}/DeNovoGUI-1.16.8.jar com.compomics.denovogui.cmd.DeNovoCLI \
+            -spectrum_files {input.mgf} -output_folder novor -id_params {input.params} \
+            -pepnovo 0 -novor 1 -directag 0 -pnovo 0 -threads {threads} > {log} 2>&1
+        mv novor/{DATASET}.novor.csv {output}
+        """
+
+
+rule casanovo:
+    input:
+        mgf=f'data/{DATASET}.mgf',
+        config=os.path.join(PARAMS, 'casanovo.yaml')
+    output:
+        f'predictions/{DATASET}_casanovo_pred.mztab'
+    resources:
+        gpu=1
+    log:
+        'logs/casanovo.log'
+    conda:
+        os.path.join(ENVS, 'casanovo.yaml')
+    shell:
+        # the model weights (v4.2.0) are downloaded automatically by Casanovo
+        'casanovo sequence {input.mgf} -o {output} --config {input.config} > {log} 2>&1'
+
+
+rule instanovo:
+    input:
+        f'data/{DATASET}.mgf'
+    output:
+        f'predictions/{DATASET}_instanovo_pred.csv'
+    resources:
+        gpu=1
+    log:
+        'logs/instanovo.log'
+    conda:
+        os.path.join(ENVS, 'instanovo.yaml')
+    shell:
+        # the models are downloaded automatically by InstaNovo
+        """
+        instanovo predict --data-path {input} --output-path {output} --instanovo-model instanovo-v1.1.0 \
+            --instanovo-plus-model instanovoplus-v1.1.0-alpha --denovo --with-refinement > {log} 2>&1
+        """
+
+
+rule contranovo:
+    input:
+        mgf=f'data/{DATASET}.mgf',
+        code='tools/ContraNovo',
+        ckpt='tools/ContraNovo.ckpt'
+    output:
+        f'predictions/{DATASET}_contranovo_pred.txt'
+    resources:
+        gpu=1
+    log:
+        'logs/contranovo.log'
+    conda:
+        os.path.join(ENVS, 'contranovo.yaml')
+    shell:
+        # ContraNovo appends its predictions to contranovo_pred.txt in the working directory
+        """
+        rm -rf contranovo && mkdir -p contranovo
+        cd contranovo && PYTHONPATH=../{input.code} python -m ContraNovo.ContraNovo --mode=denovo \
+            --peak_path=../{input.mgf} --model=../{input.ckpt} > ../{log} 2>&1
+        mv contranovo_pred.txt ../{output}
+        """
+
+
+rule pihelixnovo:
+    input:
+        mgf=f'data/{DATASET}.mgf',
+        code='tools/pi-HelixNovo',
+        ckpt=f'tools/{PIHELIXNOVO_CKPT}'
+    output:
+        f'predictions/{DATASET}_pi_helixnovo_pred.txt'
+    resources:
+        gpu=1
+    log:
+        'logs/pihelixnovo.log'
+    conda:
+        os.path.join(ENVS, 'pihelixnovo.yaml')
+    shell:
+        # pi-HelixNovo writes the predictions to <output>_denovo.txt
+        """
+        mkdir -p pihelixnovo
+        python {input.code}/main.py --mode=denovo --config={input.code}/config.yaml --gpu=0 \
+            --output=pihelixnovo/{DATASET}.log --peak_path={input.mgf} --model={input.ckpt} > {log} 2>&1
+        mv pihelixnovo/{DATASET}_denovo.txt {output}
+        """
+
+
+########################## evaluation ##########################
+
+rule create_result_csv:
+    input:
+        mgf=f'data/{DATASET}.mgf',
+        msgfplus=f'predictions/{DATASET}_msgfplus_pred.parquet',
+        pepnovo=f'predictions/{DATASET}_pepnovoplus_pred.txt',
+        novor=f'predictions/{DATASET}_novor_pred.csv',
+        casanovo=f'predictions/{DATASET}_casanovo_pred.mztab',
+        pihelixnovo=f'predictions/{DATASET}_pi_helixnovo_pred.txt',
+        contranovo=f'predictions/{DATASET}_contranovo_pred.txt',
+        instanovo=f'predictions/{DATASET}_instanovo_pred.csv'
+    output:
+        f'results/{DATASET}_benchmark_predictions.csv'
+    log:
+        'logs/create_result_csv.log'
+    conda:
+        EVAL_ENV
+    shell:
+        """
+        python {REPO}/create_result_csv.py -gt {input.mgf} -msgfplus {input.msgfplus} -pepnovoplus {input.pepnovo} \
+            -novor {input.novor} -casanovo {input.casanovo} -pi_helixnovo {input.pihelixnovo} \
+            -contranovo {input.contranovo} -instanovo {input.instanovo} -save_path {output} > {log} 2>&1
+        """
+
+
+rule precision_coverage:
+    input:
+        f'results/{DATASET}_benchmark_predictions.csv'
+    output:
+        f'results/{DATASET}_peptide_precision_coverage.png',
+        f'results/{DATASET}_auc.csv'
+    log:
+        'logs/precision_coverage.log'
+    conda:
+        EVAL_ENV
+    shell:
+        """
+        python {REPO}/calc_and_plot_precision_coverage.py -i {input} -o results -d {DATASET} --tables results > {log} 2>&1
+        """

@@ -1,0 +1,15 @@
+# Annotated benchmark dataset (MGF with SEQ field), e.g. the output of the benchmark_creation workflow
+# (results/<accession>_benchmark_dataset.mgf) or a benchmark dataset from Zenodo
+benchmark_mgf: /path/to/PXD043425_benchmark_dataset.mgf
+
+# Name used for the output files
+dataset: PXD043425
+
+# Number of randomly selected spectra to evaluate; 0 = all spectra.
+# 3000 spectra take about 2.5 hours on a laptop (NVIDIA RTX 500 GPU with 4 GB), see README.
+n_spectra: 3000
+# Random seed for the selection of the spectra
+seed: 0
+
+# Memory for MS-GF+ (Java)
+msgfplus_memory: 16G

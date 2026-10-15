@@ -1,0 +1,6 @@
+# Java for DeNovoGUI 1.16.8 (PepNovo+ and Novor); DeNovoGUI itself is downloaded by the workflow
+name: denovo_denovogui
+channels:
+  - conda-forge
+dependencies:
+  - openjdk=11

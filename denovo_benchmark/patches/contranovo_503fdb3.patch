@@ -1,0 +1,324 @@
+diff --git a/ContraNovo/ContraNovo.py b/ContraNovo/ContraNovo.py
+index 5d26640..6647160 100644
+--- a/ContraNovo/ContraNovo.py
++++ b/ContraNovo/ContraNovo.py
+@@ -23,6 +23,11 @@ from pytorch_lightning.lite import LightningLite
+ from . import utils
+ from .denovo import model_runner
+ 
++################# new
++from .data import ms_io
++from pathlib import Path
++#################
++
+ 
+ logger = logging.getLogger("ContraNovo")
+ 
+@@ -195,11 +200,21 @@ def main(
+     if mode == "denovo":
+         logger.info("Predict peptide sequences with ContraNovo.")
+         writer = None
+-        # writer.set_metadata(
+-        #     config, peak_path=peak_path, model=model, config_filename=config_fn
+-        # )
++      #  writer.set_metadata(
++      #      config, peak_path=peak_path, model=model, config_filename=config_fn
++      #   )
++        
+         model_runner.predict(peak_path, model, config, writer)
+-        writer.save()
++        ############# new
++        '''
++        writer = ms_io.MztabWriter(Path(output).with_suffix(".mztab"))
++        writer.set_metadata(
++            config, peak_path=peak_path, model=model, config_filename=config_fn
++        )
++        writer.set_ms_run([peak_path])
++        '''
++        #############
++       # writer.save()
+     elif mode == "eval":
+         logger.info("Evaluate a trained ContraNovo model.")
+         model_runner.evaluate(peak_path, model, config)
+diff --git a/ContraNovo/config.yaml b/ContraNovo/config.yaml
+index 1e264dc..171ebce 100644
+--- a/ContraNovo/config.yaml
++++ b/ContraNovo/config.yaml
+@@ -86,7 +86,7 @@ SWA: False #
+ train_batch_size: 64
+ predict_batch_size: 512
+ # n_beams: 5
+-n_beams: 5 # No beam search
++n_beams: 1 # No beam search
+ 
+ logger:
+ 
+diff --git a/ContraNovo/denovo/model.py b/ContraNovo/denovo/model.py
+index 4610f6a..ee4fb31 100644
+--- a/ContraNovo/denovo/model.py
++++ b/ContraNovo/denovo/model.py
+@@ -997,16 +997,38 @@ class Spec2Pep(pl.LightningModule, ModelMixin):
+             The individual amino acid scores for each prediction.
+         """
+         peptides, aa_scores = self.forward(batch[0], batch[1])
+-        # with open("./mouse_layer1.txt",'a') as f:
+-        #     for i,pep in enumerate(peptides):
+-        #         # print(batch[2][i],":",''.join(pep[1:])+"\n")
+-        #         # f.write(str(batch[2][i])+":"+''.join(pep[1:])+"\n")
+-        #         for x in batch[0][0,:,0]:
+-        #             f.write(str(float(x))+" ")
+-        #         f.write("\n")
+-                # f.write(str() + "\n")
++        ##################### original #############################
++        '''
++        with open("contranovo_pred.txt",'a') as f:
++             for i,pep in enumerate(peptides):
++                 # print(batch[2][i],":",''.join(pep[1:])+"\n")
++                  f.write(str(batch[2][i])+":"+''.join(pep[1:])+"\n")
++                  for x in batch[0][0,:,0]:
++                     f.write(str(float(x))+" ")
++                  f.write("\n")
++                  f.write(str() + "\n")
+                 # print(batch[2][i],":",''.join(pep[1:]))
++        '''
++        ##################### original #############################
++                  
++        ##################### new version ##########################
++        with open("contranovo_pred.txt", 'a') as f:
++            for i, (pep, scores) in enumerate(zip(peptides, aa_scores)):
++                # Write the title and the sequence
++                f.write(f"{str(batch[2][i])}:{''.join(pep[1:])}\n")
++
++                # Perform max operation across the amino acids for each position
++                max_scores, max_indices = torch.max(scores, dim=1)
++
++                # Iterate over each position's max score
++                for pos, score in enumerate(max_scores):
++                    # Check if the score is NaN
++                    if not torch.isnan(score):
++                        f.write(f"Position {pos+1}: {score.item():.4f}\n")
++                f.write("\n")  # Add an extra newline for separation between entries
+         return batch[2], batch[1], peptides, aa_scores
++    
++
+ 
+     def on_train_epoch_end(self) -> None:
+         """
+diff --git a/ContraNovo/data/ms_io.py b/ContraNovo/data/ms_io.py
+new file mode 100755
+index 0000000..e8244ae
+--- /dev/null
++++ b/ContraNovo/data/ms_io.py
+@@ -0,0 +1,211 @@
++"""Mass spectrometry file type input/output operations."""
++
++import collections
++import csv
++import operator
++import os
++import re
++from pathlib import Path
++from typing import List
++
++import natsort
++
++# from .. import __version__
++from ..config import Config
++
++
++class MztabWriter:
++    """
++    Export spectrum identifications to an mzTab file.
++
++    Parameters
++    ----------
++    filename : str
++        The name of the mzTab file.
++    """
++
++    def __init__(self, filename: str):
++        self.filename = filename
++        self.metadata = [
++            ("mzTab-version", "1.0.0"),
++            ("mzTab-mode", "Summary"),
++            ("mzTab-type", "Identification"),
++            (
++                "description",
++                f"Casanovo identification file "
++                f"{os.path.splitext(os.path.basename(self.filename))[0]}",
++            ),
++            
++            (
++                "psm_search_engine_score[1]",
++                "[MS, MS:1001143, search engine specific score for PSMs, ]",
++            ),
++        ]
++        self._run_map = {}
++        self.psms = []
++
++    def set_metadata(self, config: Config, **kwargs) -> None:
++        """
++        Specify metadata information to write to the mzTab header.
++
++        Parameters
++        ----------
++        config : Config
++            The active configuration options.
++        kwargs
++            Additional configuration options (i.e. from command-line arguments).
++        """
++        # Derive the fixed and variable modifications from the residue alphabet.
++        known_mods = {
++            "+57.021": "[UNIMOD, UNIMOD:4, Carbamidomethyl, ]",
++            "+15.995": "[UNIMOD, UNIMOD:35, Oxidation, ]",
++            "+0.984": "[UNIMOD, UNIMOD:7, Deamidated, ]",
++            "+42.011": "[UNIMOD, UNIMOD:1, Acetyl, ]",
++            "+43.006": "[UNIMOD, UNIMOD:5, Carbamyl, ]",
++            "-17.027": "[UNIMOD, UNIMOD:385, Ammonia-loss, ]",
++        }
++        residues = collections.defaultdict(set)
++        for aa, mass in config["residues"].items():
++            aa_mod = re.match(r"([A-Z]?)([+-]?(?:[0-9]*[.])?[0-9]+)", aa)
++            if aa_mod is None:
++                residues[aa].add(None)
++            else:
++                residues[aa_mod[1]].add(aa_mod[2])
++        fixed_mods, variable_mods = [], []
++        for aa, mods in residues.items():
++            if len(mods) > 1:
++                for mod in mods:
++                    if mod is not None:
++                        variable_mods.append((aa, mod))
++            elif None not in mods:
++                fixed_mods.append((aa, mods.pop()))
++
++        # Add all config values to the mzTab metadata section.
++        if len(fixed_mods) == 0:
++            self.metadata.append(
++                (
++                    "fixed_mod[1]",
++                    "[MS, MS:1002453, No fixed modifications searched, ]",
++                )
++            )
++        else:
++            for i, (aa, mod) in enumerate(fixed_mods, 1):
++                self.metadata.append(
++                    (
++                        f"fixed_mod[{i}]",
++                        known_mods.get(mod, f"[CHEMMOD, CHEMMOD:{mod}, , ]"),
++                    )
++                )
++                self.metadata.append(
++                    (f"fixed_mod[{i}]-site", aa if aa else "N-term")
++                )
++        if len(variable_mods) == 0:
++            self.metadata.append(
++                (
++                    "variable_mod[1]",
++                    "[MS, MS:1002454, No variable modifications searched,]",
++                )
++            )
++        else:
++            for i, (aa, mod) in enumerate(variable_mods, 1):
++                self.metadata.append(
++                    (
++                        f"variable_mod[{i}]",
++                        known_mods.get(mod, f"[CHEMMOD, CHEMMOD:{mod}, , ]"),
++                    )
++                )
++                self.metadata.append(
++                    (f"variable_mod[{i}]-site", aa if aa else "N-term")
++                )
++        for i, (key, value) in enumerate(kwargs.items(), 1):
++            self.metadata.append(
++                (f"software[1]-setting[{i}]", f"{key} = {value}")
++            )
++        for i, (key, value) in enumerate(config.items(), len(kwargs) + 1):
++            if key not in ("residues",):
++                self.metadata.append(
++                    (f"software[1]-setting[{i}]", f"{key} = {value}")
++                )
++
++    def set_ms_run(self, peak_filenames: List[str]) -> None:
++        """
++        Add input peak files to the mzTab metadata section.
++
++        Parameters
++        ----------
++        peak_filenames : List[str]
++            The input peak file name(s).
++        """
++        for i, filename in enumerate(natsort.natsorted(peak_filenames), 1):
++            filename = os.path.abspath(filename)
++            self.metadata.append(
++                (f"ms_run[{i}]-location", Path(filename).as_uri()),
++            )
++            self._run_map[filename] = i
++
++    def save(self) -> None:
++        """
++        Export the spectrum identifications to the mzTab file.
++        """
++        with open(self.filename, "w") as f:
++            writer = csv.writer(f, delimiter="\t", lineterminator=os.linesep)
++            # Write metadata.
++            for row in self.metadata:
++                writer.writerow(["MTD", *row])
++            # Write PSMs.
++            writer.writerow(
++                [
++                    "PSH",
++                    "sequence",
++                    "PSM_ID",
++                    "accession",
++                    "unique",
++                    "database",
++                    "database_version",
++                    "search_engine",
++                    "search_engine_score[1]",
++                    "modifications",
++                    "retention_time",
++                    "charge",
++                    "exp_mass_to_charge",
++                    "calc_mass_to_charge",
++                    "spectra_ref",
++                    "pre",
++                    "post",
++                    "start",
++                    "end",
++                    "opt_ms_run[1]_aa_scores",
++                ]
++            )
++            for i, psm in enumerate(
++                natsort.natsorted(self.psms, key=operator.itemgetter(1)), 1
++            ):
++                filename, idx = os.path.abspath(psm[1][0]), psm[1][1]
++                writer.writerow(
++                    [
++                        "PSM",
++                        psm[0],  # sequence
++                        i,  # PSM_ID
++                        "null",  # accession
++                        "null",  # unique
++                        "null",  # database
++                        "null",  # database_version
++                        
++                        psm[2],  # search_engine_score[1]
++                        # FIXME: Modifications should be specified as
++                        #  controlled vocabulary terms.
++                        "null",  # modifications
++                        # FIXME: Can we get the retention time from the data
++                        #  loader?
++                        "null",  # retention_time
++                        psm[3],  # charge
++                        psm[4],  # exp_mass_to_charge
++                        psm[5],  # calc_mass_to_charge
++                        f"ms_run[{self._run_map[filename]}]:{idx}",
++                        "null",  # pre
++                        "null",  # post
++                        "null",  # start
++                        "null",  # end
++                        psm[6],  # opt_ms_run[1]_aa_scores
++                    ]
++                )
+\ No newline at end of file

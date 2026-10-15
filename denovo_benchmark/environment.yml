@@ -1,0 +1,13 @@
+# Environment to run the de novo benchmark workflow (Linux); the tools themselves get their own environments
+# (envs/), which Snakemake creates automatically.
+name: De_novo_benchmark
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.13
+  - snakemake-minimal=9.27.0
+  - conda>=24.7.1        # required by Snakemake 9 to create the tool environments
+  - git
+  - curl
+  - xz
