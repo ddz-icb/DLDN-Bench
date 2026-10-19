@@ -15,6 +15,7 @@ def create_result_csv(ground_truth_file_path,
                       save_path=None,
                       additional_result_file_path=None,
                       additional_result_name=None,
+                      pi_helixnovo2_result_file_path=None,
                     ):
     
 
@@ -155,6 +156,27 @@ def create_result_csv(ground_truth_file_path,
 
     merged_df = merged_df.merge(pi_helixnovo_result_df, how='inner', on='pos_index')
 
+    ####################### pi-helixnovo2 (optional) #######################
+
+    if pi_helixnovo2_result_file_path:
+
+        print('parse Pi-HelixNovo2 prediction file')
+
+        # columns: title, forward/reverse candidates with scores, final prediction and its score (last two columns)
+        pi_helixnovo2_result_df = pd.read_csv(pi_helixnovo2_result_file_path, sep='\t', header=None)
+        pi_helixnovo2_result_df = pi_helixnovo2_result_df[[0, 9, 10]]
+        pi_helixnovo2_result_df.columns = ['title', 'sequence', 'p']
+
+        pi_helixnovo2_result_df['pos_index'] = range(len(pi_helixnovo2_result_df))
+
+        pi_helixnovo2_result_df, _ = modify_de_novo_result_with_filter_out_df(pi_helixnovo2_result_df, modification_dict)
+
+        pi_helixnovo2_result_df.rename(columns={'sequence':'pi_helixnovo2_seq','p': 'pi_helixnovo2_score'}, inplace=True)
+
+        pi_helixnovo2_result_df = pi_helixnovo2_result_df[['pos_index','pi_helixnovo2_seq','pi_helixnovo2_score']]
+
+        merged_df = merged_df.merge(pi_helixnovo2_result_df, how='inner', on='pos_index')
+
     ####################### contranovo #######################
 
     print('parse ContraNovo prediction file')
@@ -287,6 +309,9 @@ if __name__ == "__main__":
     parser.add_argument('-additional_name', '--additional_result_name', required=False, 
                         help='Name for the additional result file (used as column prefix)')
 
+    parser.add_argument('-pi_helixnovo2', '--pi_helixnovo2_pred_file_path', required=False,
+                        help='Path to π-HelixNovo2 prediction file (optional)')
+
     args = parser.parse_args()
 
     create_result_csv(ground_truth_file_path=args.ground_truth_file_path,
@@ -299,4 +324,5 @@ if __name__ == "__main__":
                         instanovo_result_file_path=args.instanovo_pred_file_path,
                         save_path=args.save_path,
                         additional_result_file_path=args.additional_result_file_path,
-                        additional_result_name=args.additional_result_name)
+                        additional_result_name=args.additional_result_name,
+                        pi_helixnovo2_result_file_path=args.pi_helixnovo2_pred_file_path)

@@ -70,4 +70,5 @@ tool_name_plot_name_dict = {'msgfplus_percolator':'MSGF+ with Percolator',
                             'casanovo':'CasaNovo' , 
                             'pi_helixnovo':'Pi-HelixNovo', 
                             'contranovo':'ContraNovo', 
-                            'instanovo':'InstaNovo'}
+                            'instanovo':'InstaNovo',
+                            'pi_helixnovo2':'Pi-HelixNovo2'}

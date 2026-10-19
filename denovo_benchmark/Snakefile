@@ -29,6 +29,11 @@ PIHELIXNOVO_REPO, PIHELIXNOVO_COMMIT = 'https://github.com/PHOENIXcenter/pi-Heli
 PIHELIXNOVO_WEIGHTS_URL = 'https://zenodo.org/api/records/10405582/files/Model-weights.zip/content'
 PIHELIXNOVO_CKPT = 'human-epoch-12-step-550000.ckpt'
 PIHELIXNOVO_CKPT_MD5 = '78637cf815b81c40396557149c945ca6'
+# pi-HelixNovo2 (not part of the published benchmark): branch pi-HelixNovoV2, official MassIVE-KB weights
+PIHELIXNOVO2_COMMIT = 'd72474e'
+PIHELIXNOVO2_WEIGHTS_URL = 'https://zenodo.org/api/records/16735542/files/Evaluation_on_MassIVE-KB_dataset.zip/content'
+PIHELIXNOVO2_CKPT = 'pi-helixnovo2_massivekb.ckpt'
+PIHELIXNOVO2_CKPT_MD5 = '341977678b1b52068f7552f67314ce0f'
 
 
 rule all:
@@ -113,6 +118,19 @@ rule download_pihelixnovo:
         # only the required checkpoint is downloaded from the 11 GB archive
         python {SCRIPTS}/fetch_zip_member.py {PIHELIXNOVO_WEIGHTS_URL} Model-weights/pi-HelixNovo/{PIHELIXNOVO_CKPT} {output.ckpt}
         echo "{PIHELIXNOVO_CKPT_MD5}  {output.ckpt}" | md5sum -c
+        """
+
+
+rule download_pihelixnovo2:
+    output:
+        code=directory('tools/pi-HelixNovo2'),
+        ckpt=f'tools/{PIHELIXNOVO2_CKPT}'
+    shell:
+        """
+        git clone -q {PIHELIXNOVO_REPO} {output.code} && git -C {output.code} checkout -q {PIHELIXNOVO2_COMMIT}
+        # only the required checkpoint is downloaded from the 1.6 GB archive
+        python {SCRIPTS}/fetch_zip_member.py {PIHELIXNOVO2_WEIGHTS_URL} Evaluation_on_MassIVE-KB_dataset/ModelWeights/{PIHELIXNOVO2_CKPT} {output.ckpt}
+        echo "{PIHELIXNOVO2_CKPT_MD5}  {output.ckpt}" | md5sum -c
         """
 
 
@@ -307,6 +325,29 @@ rule pihelixnovo:
         """
 
 
+rule pihelixnovo2:
+    input:
+        mgf=f'data/{DATASET}.mgf',
+        code='tools/pi-HelixNovo2',
+        ckpt=f'tools/{PIHELIXNOVO2_CKPT}'
+    output:
+        f'predictions/{DATASET}_pi_helixnovo2_pred.txt'
+    resources:
+        gpu=1
+    log:
+        'logs/pihelixnovo2.log'
+    conda:
+        # the environment file of pi-HelixNovo2 is identical to the one of pi-HelixNovo
+        os.path.join(ENVS, 'pihelixnovo.yaml')
+    shell:
+        """
+        mkdir -p pihelixnovo2
+        python {input.code}/main.py --mode=denovo --config={input.code}/config.yaml --gpu=0 \
+            --output=pihelixnovo2/{DATASET}.log --peak_path={input.mgf} --model={input.ckpt} > {log} 2>&1
+        mv pihelixnovo2/{DATASET}_denovo.txt {output}
+        """
+
+
 ########################## evaluation ##########################
 
 rule create_result_csv:
@@ -318,7 +359,8 @@ rule create_result_csv:
         casanovo=f'predictions/{DATASET}_casanovo_pred.mztab',
         pihelixnovo=f'predictions/{DATASET}_pi_helixnovo_pred.txt',
         contranovo=f'predictions/{DATASET}_contranovo_pred.txt',
-        instanovo=f'predictions/{DATASET}_instanovo_pred.csv'
+        instanovo=f'predictions/{DATASET}_instanovo_pred.csv',
+        pihelixnovo2=f'predictions/{DATASET}_pi_helixnovo2_pred.txt'
     output:
         f'results/{DATASET}_benchmark_predictions.csv'
     log:
@@ -329,7 +371,8 @@ rule create_result_csv:
         """
         python {REPO}/create_result_csv.py -gt {input.mgf} -msgfplus {input.msgfplus} -pepnovoplus {input.pepnovo} \
             -novor {input.novor} -casanovo {input.casanovo} -pi_helixnovo {input.pihelixnovo} \
-            -contranovo {input.contranovo} -instanovo {input.instanovo} -save_path {output} > {log} 2>&1
+            -contranovo {input.contranovo} -instanovo {input.instanovo} -pi_helixnovo2 {input.pihelixnovo2} \
+            -save_path {output} > {log} 2>&1
         """
 
 

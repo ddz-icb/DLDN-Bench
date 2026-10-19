@@ -3,7 +3,7 @@
 Snakemake workflow that runs all tools of the benchmark on an annotated benchmark dataset with the settings of the published benchmark, and evaluates their predictions with the evaluation scripts of this repository:
 
 1. **Database search**: MS-GF+ (separate target and decoy search) and Percolator
-2. **De novo sequencing**: PepNovo+, Novor, Casanovo, InstaNovo, ContraNovo and π-HelixNovo
+2. **De novo sequencing**: PepNovo+, Novor, Casanovo, InstaNovo, ContraNovo and π-HelixNovo, as well as π-HelixNovo2 (not part of the published benchmark)
 3. **Evaluation**: alignment of all predictions (`create_result_csv.py`) and precision-coverage curves with AUCs (`calc_and_plot_precision_coverage.py`)
 
 The input is an annotated benchmark dataset (MGF with `SEQ` field), e.g. created from a PRIDE dataset with the [`benchmark_creation`](../benchmark_creation/README.md) workflow or downloaded from [Zenodo](https://doi.org/10.5281/zenodo.18213582). Together, both workflows cover the complete benchmark from the raw data to the evaluation.
@@ -37,7 +37,7 @@ By default, 3,000 randomly selected spectra of the benchmark dataset are evaluat
 
 ### Runtime
 
-On a laptop (16 CPU cores, NVIDIA RTX 500 Ada GPU with 4 GB), the default configuration (3,000 spectra of the two-file benchmark dataset of PXD043425) takes about 2.5 hours, plus ~30 minutes for creating the tool environments on the first run. π-HelixNovo and ContraNovo are the slowest tools (~9 and ~3 minutes per 1,000 spectra on this GPU); the complete two-file dataset (33,229 spectra) takes about 8 hours.
+On a laptop (16 CPU cores, NVIDIA RTX 500 Ada GPU with 4 GB), the default configuration (3,000 spectra of the two-file benchmark dataset of PXD043425) takes about 2.5 hours (without π-HelixNovo2, which takes a few minutes), plus ~30 minutes for creating the tool environments on the first run. π-HelixNovo and ContraNovo are the slowest tools (~9 and ~3 minutes per 1,000 spectra on this GPU); the complete two-file dataset (33,229 spectra) takes about 8 hours.
 
 ## Tools and settings
 
@@ -52,6 +52,9 @@ All tools are run with the versions, models and settings of the published benchm
 | InstaNovo | 1.1.1 | instanovo-v1.1.0, refinement with instanovoplus-v1.1.0-alpha, greedy search |
 | ContraNovo | commit 503fdb3 + `patches/contranovo_503fdb3.patch` | official checkpoint; the patch sets `n_beams = 1` and writes the predictions with per-position scores |
 | π-HelixNovo | commit 47983d7 | human-epoch-12-step-550000.ckpt (official weights, Zenodo 10405582), configuration of the repository |
+| π-HelixNovo2 | branch pi-HelixNovoV2, commit d72474e | pi-helixnovo2_massivekb.ckpt (official MassIVE-KB weights, Zenodo 16735542), configuration of the repository; the final prediction of the bidirectional decoding is evaluated |
+
+π-HelixNovo2 is not part of the published benchmark; its predictions can therefore not be compared with published results.
 
 The tool environments in `envs/` pin the package versions of the original runs, which matters for reproducibility: e.g. Casanovo 4.3.0 does not run with current Lightning versions.
 
