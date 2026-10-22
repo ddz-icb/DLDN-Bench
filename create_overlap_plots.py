@@ -10,13 +10,13 @@ Supports:
 - More than 6 tools: UpSet plot only (using UpSetPlot)
 
 Usage:
-    python venn_plot_generator.py <csv_file>
-    python venn_plot_generator.py <csv_file> --tools tool1 tool2 tool3
-    python venn_plot_generator.py <csv_file> --output custom_output.png
-    python venn_plot_generator.py <csv_file> --title "Custom Title"
-    python venn_plot_generator.py <csv_file> --dpi 300
-    python venn_plot_generator.py <csv_file> --figsize 12 10
-    python venn_plot_generator.py <csv_file> --exact  # Use exact string matching instead of mass-based
+    python create_overlap_plots.py <csv_file>
+    python create_overlap_plots.py <csv_file> --tools tool1 tool2 tool3
+    python create_overlap_plots.py <csv_file> --output custom_output.png
+    python create_overlap_plots.py <csv_file> --title "Custom Title"
+    python create_overlap_plots.py <csv_file> --dpi 300
+    python create_overlap_plots.py <csv_file> --figsize 12 10
+    python create_overlap_plots.py <csv_file> --exact  # Use exact string matching instead of mass-based
 """
 
 import argparse
@@ -369,14 +369,14 @@ def main():
         epilog="""
     Examples:
     # Use all tools (Venn diagram and UpSet plot for up to 6 tools, only UpSet plot for more tools)
-    python create_venn_plots.py my_dataset_benchmark_predictions.csv
+    python create_overlap_plots.py my_dataset_benchmark_predictions.csv
 
     # Select specific tools
-    python create_venn_plots.py data.csv --tools tool1 tool2 tool3
+    python create_overlap_plots.py data.csv --tools tool1 tool2 tool3
 
     # Custom output and styling
-    python create_venn_plots.py data.csv --output results/venn.png --upset-output results/upset.png --dpi 300
-    python create_venn_plots.py data.csv --title "Tool Comparison" --figsize 14 12
+    python create_overlap_plots.py data.csv --output results/venn.png --upset-output results/upset.png --dpi 300
+    python create_overlap_plots.py data.csv --title "Tool Comparison" --figsize 14 12
             """
     )
     
