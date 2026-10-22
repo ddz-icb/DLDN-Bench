@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Venn Diagram Generator for Peptide Sequence Predictions
-Creates Venn diagrams for comparing predictions from multiple de novo sequencing tools.
+Venn Diagram and UpSet Plot Generator for Peptide Sequence Predictions
+Compares the correct predictions of multiple de novo sequencing tools.
 
 Supports:
-- 2-3 way Venn diagrams using matplotlib-venn
-- 4-6 way Venn diagrams using pyvenn
-- Aborts if more than 6 tools are selected
+- 2-6 tools: Venn diagram and UpSet plot
+  - 2-3 way Venn diagrams using matplotlib-venn
+  - 4-6 way Venn diagrams using pyvenn
+- More than 6 tools: UpSet plot only (using UpSetPlot)
 
 Usage:
     python venn_plot_generator.py <csv_file>
@@ -25,6 +26,7 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for CLI
 import matplotlib.pyplot as plt
 from matplotlib_venn import venn2, venn3, venn2_circles, venn3_circles
+from upsetplot import UpSet, from_contents
 import numpy as np
 from pathlib import Path
 import sys
@@ -101,12 +103,7 @@ def read_predictions(csv_file, selected_tools=None):
     
     # Check number of tools
     if len(tool_columns) < 2:
-        print("Error: Need at least 2 tools to create a Venn diagram")
-        sys.exit(1)
-    elif len(tool_columns) > 6:
-        print(f"Error: Cannot create Venn diagram for {len(tool_columns)} tools (maximum is 6)")
-        print("Please select up to 6 tools using the --tools argument")
-        print("Example: --tools tool1 tool2 tool3 tool4 tool5 tool6")
+        print("Error: Need at least 2 tools to compare their predictions")
         sys.exit(1)
     
     print(f"Processing {len(df)} peptide sequences")
@@ -316,6 +313,20 @@ def create_pyvenn_diagram(sets_dict, labels, title, output_file, figsize=(12, 10
     plt.close()
 
 
+def create_upset_plot(sets_dict, labels, title, output_file, dpi=150, show_numbers=True):
+    """
+    Create an UpSet plot of the correct predictions of any number of tools.
+    """
+    upset_data = from_contents({label: sets_dict[label] for label in labels})
+
+    fig = plt.figure(figsize=(max(8, 0.4 * len(upset_data.index.unique()) + 4), 6))
+    UpSet(upset_data, subset_size='count', sort_by='cardinality', show_counts=show_numbers).plot(fig=fig)
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+
+    plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
+    print(f"\nUpSet plot saved to: {output_file}")
+    plt.close()
+
 
 def print_intersection_statistics(sets_dict):
     """
@@ -353,29 +364,27 @@ def print_intersection_statistics(sets_dict):
 def main():
 
     parser = argparse.ArgumentParser(
-        description='Generate Venn diagrams from peptide prediction results (max 6 tools)',
+        description='Generate Venn diagrams (up to 6 tools) and UpSet plots from peptide prediction results',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
     Examples:
-    # Use all tools (aborts if more than 6)
-    python venn_plot_generator.py my_dataset_benchmark_predictions.csv
-    
+    # Use all tools (Venn diagram and UpSet plot for up to 6 tools, only UpSet plot for more tools)
+    python create_venn_plots.py my_dataset_benchmark_predictions.csv
+
     # Select specific tools
-    python venn_plot_generator.py data.csv --tools tool1 tool2 tool3
-    
-    # Select up to 6 tools from a file with more tools
-    python venn_plot_generator.py data.csv --tools casanovo novor pointnovo pepnet directms specgpt
-    
+    python create_venn_plots.py data.csv --tools tool1 tool2 tool3
+
     # Custom output and styling
-    python venn_plot_generator.py data.csv --output results/venn.png --dpi 300
-    python venn_plot_generator.py data.csv --title "Tool Comparison" --figsize 14 12
+    python create_venn_plots.py data.csv --output results/venn.png --upset-output results/upset.png --dpi 300
+    python create_venn_plots.py data.csv --title "Tool Comparison" --figsize 14 12
             """
     )
     
     parser.add_argument('csv_file', help='Path to the CSV file containing predictions')
     parser.add_argument('--tools', '-t', nargs='+', 
-                       help='Specific tools to include (max 6). If not specified, uses all tools.')
-    parser.add_argument('--output', '-o', help='Output file path (default: auto-generated based on input)')
+                       help='Specific tools to include. If not specified, uses all tools.')
+    parser.add_argument('--output', '-o', help='Output file path of the Venn diagram (default: auto-generated based on input)')
+    parser.add_argument('--upset-output', help='Output file path of the UpSet plot (default: auto-generated based on input)')
     parser.add_argument('--title', help='Custom title for the plot')
     parser.add_argument('--dpi', type=int, default=150, help='DPI for the output image (default: 150)')
     parser.add_argument('--figsize', nargs=2, type=float, default=[12, 10], 
@@ -383,25 +392,25 @@ def main():
     parser.add_argument('--exact', action='store_true',
                        help='Use exact string matching instead of mass-based matching (default: mass-based)')
     parser.add_argument('--no-numbers', action='store_true',
-                       help='Hide the count numbers in the Venn diagram regions')
-    
+                       help='Hide the count numbers in the Venn diagram regions and UpSet plot bars')
+
     args = parser.parse_args()
-    
-    # Validate number of selected tools
-    if args.tools and len(args.tools) > 6:
-        print(f"Error: Too many tools selected ({len(args.tools)}). Maximum is 6.")
-        print(f"You selected: {', '.join(args.tools)}")
-        sys.exit(1)
-    
-    # Determine output file path
+
+    # Determine output file paths
     input_path = Path(args.csv_file)
+    dataset_name = input_path.stem.replace('_benchmark_predictions', '')
+    modus = 'string_match' if args.exact else 'mass_match'
     if args.output:
         output_file = args.output
     else:
         # Auto-generate output filename
-        dataset_name = input_path.stem.replace('_benchmark_predictions', '')
-        modus = 'string_match' if args.exact else 'mass_match'
         output_file = input_path.parent / f"{dataset_name}_predictions_venn_plot_{modus}.png"
+    if args.upset_output:
+        upset_output_file = args.upset_output
+    elif args.output:
+        upset_output_file = Path(args.output).with_name(f"{Path(args.output).stem}_upset{Path(args.output).suffix}")
+    else:
+        upset_output_file = input_path.parent / f"{dataset_name}_predictions_upset_plot_{modus}.png"
 
 
 
@@ -410,7 +419,6 @@ def main():
     title = args.title if args.title else ""
     
     print(f"\nProcessing: {args.csv_file}")
-    print(f"Output will be saved to: {output_file}")
     
     # Read the CSV file
     df, tool_columns = read_predictions(args.csv_file, args.tools)
@@ -421,11 +429,14 @@ def main():
     # Print statistics
     print_intersection_statistics(sets_dict)
     
-    # Create Venn diagram based on number of tools
+    # Create Venn diagram (up to 6 tools) and UpSet plot (any number of tools)
     n_tools = len(tool_columns)
-    
-    print(f"\nCreating {n_tools}-way Venn diagram...")
-    
+
+    if n_tools <= 6:
+        print(f"\nCreating {n_tools}-way Venn diagram...")
+    else:
+        print(f"\n{n_tools} tools: skipping the Venn diagram (supported for up to 6 tools), creating only the UpSet plot")
+
     if n_tools == 2:
         create_venn2(sets_dict, tool_columns, title, output_file, 
                     figsize=tuple(args.figsize), dpi=args.dpi, show_numbers=not args.no_numbers)
@@ -435,7 +446,10 @@ def main():
     elif n_tools >= 4 and n_tools <= 6:
         create_pyvenn_diagram(sets_dict, tool_columns, title, output_file,
                             figsize=tuple(args.figsize), dpi=args.dpi, show_numbers=not args.no_numbers)
-    
+
+    print(f"\nCreating UpSet plot of {n_tools} tools...")
+    create_upset_plot(sets_dict, tool_columns, title, upset_output_file, dpi=args.dpi, show_numbers=not args.no_numbers)
+
     print("\nDone!")
 
 

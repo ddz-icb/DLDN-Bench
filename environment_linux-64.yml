@@ -98,5 +98,6 @@ dependencies:
       - threadpoolctl==3.5.0
       - tqdm==4.67.1
       - tzdata==2025.1
+      - upsetplot==0.9.0  # UpSet plots
       - venn==0.1.3  # "pyvenn", used for 4-6 set Venn diagrams
 
