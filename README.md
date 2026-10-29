@@ -33,7 +33,7 @@ The database search (MS-GF+) and the de novo sequencing tools of the benchmark c
 
 ## General process
 
-1. Get the Evaluation Datasets (Benchmark MGF files) and the prediction files from the models which are uploaded on Zenodo: https://doi.org/10.5281/zenodo.19627459 and apply your new De Novo Model to the Evaluation Datasets (Benchmark Datasets) to get predictions
+1. Get the Evaluation Datasets (Benchmark MGF files) and the prediction files from the models which are uploaded on Zenodo: https://doi.org/10.5281/zenodo.18213582 (this DOI always resolves to the latest version) and apply your new De Novo Model to the Evaluation Datasets (Benchmark Datasets) to get predictions
 
 2. Clone this repo to apply the evaluation to see how your new model performs with respect to current state-of-the-art models on the benchmark datasets
     
@@ -68,6 +68,7 @@ The database search (MS-GF+) and the de novo sequencing tools of the benchmark c
      -pi_helixnovo /path/to/PXD006882_benchmark_dataset_pi_helixnovo_pred.txt \
      -contranovo /path/to/PXD006882_benchmark_dataset_contranovo_pred.txt \
      -instanovo /path/to/PXD006882_benchmark_dataset_instanovo_pred.csv \
+     -pi_helixnovo2 /path/to/PXD006882_benchmark_dataset_pi_helixnovo2_pred.txt \
      -save_path /path/to/PXD006882_benchmark_predictions.csv \
      -additional_file /path/to/new_model_predictions.csv \
      -additional_name "new_model"
