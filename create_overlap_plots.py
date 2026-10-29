@@ -313,14 +313,25 @@ def create_pyvenn_diagram(sets_dict, labels, title, output_file, figsize=(12, 10
     plt.close()
 
 
-def create_upset_plot(sets_dict, labels, title, output_file, dpi=150, show_numbers=True):
+def create_upset_plot(sets_dict, labels, title, output_file, dpi=150, show_numbers=True, max_intersections=30):
     """
-    Create an UpSet plot of the correct predictions of any number of tools.
+    Create an UpSet plot of the correct predictions of any number of tools, showing the max_intersections largest
+    intersections (0: all intersections).
     """
     upset_data = from_contents({label: sets_dict[label] for label in labels})
 
-    fig = plt.figure(figsize=(max(8, 0.4 * len(upset_data.index.unique()) + 4), 6))
-    UpSet(upset_data, subset_size='count', sort_by='cardinality', show_counts=show_numbers).plot(fig=fig)
+    n_intersections = len(upset_data.index.unique())
+    n_shown = min(max_intersections, n_intersections) if max_intersections else n_intersections
+    if n_shown < n_intersections:
+        title = f"{title}\n({n_shown} largest of {n_intersections} intersections)".strip()
+
+    fig = plt.figure(figsize=(max(8, 0.4 * n_shown + 4), 6))
+    axes = UpSet(upset_data, subset_size='count', sort_by='cardinality', show_counts=show_numbers,
+                 max_subset_rank=n_shown).plot(fig=fig)
+    # vertical counts above the intersection bars, so that large numbers do not overlap
+    for text in axes['intersections'].texts:
+        text.set_rotation(90)
+        text.set_verticalalignment('bottom')
     fig.suptitle(title, fontsize=14, fontweight='bold')
 
     plt.savefig(output_file, dpi=dpi, bbox_inches='tight')
@@ -393,6 +404,8 @@ def main():
                        help='Use exact string matching instead of mass-based matching (default: mass-based)')
     parser.add_argument('--no-numbers', action='store_true',
                        help='Hide the count numbers in the Venn diagram regions and UpSet plot bars')
+    parser.add_argument('--max-intersections', type=int, default=30,
+                       help='Number of largest intersections shown in the UpSet plot (default: 30, 0: all)')
 
     args = parser.parse_args()
 
@@ -448,7 +461,8 @@ def main():
                             figsize=tuple(args.figsize), dpi=args.dpi, show_numbers=not args.no_numbers)
 
     print(f"\nCreating UpSet plot of {n_tools} tools...")
-    create_upset_plot(sets_dict, tool_columns, title, upset_output_file, dpi=args.dpi, show_numbers=not args.no_numbers)
+    create_upset_plot(sets_dict, tool_columns, title, upset_output_file, dpi=args.dpi, show_numbers=not args.no_numbers,
+                      max_intersections=args.max_intersections)
 
     print("\nDone!")
 
