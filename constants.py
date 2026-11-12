@@ -72,3 +72,14 @@ tool_name_plot_name_dict = {'msgfplus_percolator':'MSGF+ with Percolator',
                             'contranovo':'ContraNovo', 
                             'instanovo':'InstaNovo',
                             'pi_helixnovo2':'Pi-HelixNovo2'}
+
+# Fixed line colour per tool (matplotlib's default tab10 colours), so that a tool has the same colour in all plots.
+# Tools not listed here get the remaining tab10 colours.
+tool_plot_color_dict = {'msgfplus_percolator':'#1f77b4',
+                        'pepnovoplus':'#ff7f0e',
+                        'novor':'#2ca02c',
+                        'casanovo':'#d62728',
+                        'pi_helixnovo':'#9467bd',
+                        'contranovo':'#8c564b',
+                        'instanovo':'#e377c2',
+                        'pi_helixnovo2':'#bcbd22'}

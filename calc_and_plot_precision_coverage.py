@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 from sklearn.metrics import auc
 
-from constants import aa_dict, tool_name_plot_name_dict
+from constants import aa_dict, tool_name_plot_name_dict, tool_plot_color_dict
 from utils import calculate_peptide_precision_coverage, calculate_aa_precision_coverage
 
 def get_tool_names_from_columns(df):
@@ -104,10 +104,15 @@ def plot_precision_coverage_curves(result_df, tool_name_dict, benchmark_dataset_
 
     print(f'Based on {len(result_df)} peptide-spectrum matches')
 
+    # Fixed colour per tool (independent of the AUC ranking), so that a tool has the same colour in all plots
+    unused_colors = [c for c in plt.rcParams['axes.prop_cycle'].by_key()['color'] if c not in tool_plot_color_dict.values()]
+    new_tools = [tool for tool in tool_name_dict if tool not in tool_plot_color_dict]
+    tool_colors = {**tool_plot_color_dict, **dict(zip(new_tools, unused_colors))}
+
     # Plot peptide precision vs. coverage with AUC scores
     plt.figure(figsize=(10, 6))
-    for cov, prec, sc, tool_name, auc_score in sorted(zip(all_peptide_coverages, all_peptide_precisions, all_peptide_scores, tool_name_dict.values(), peptide_auc_scores), key=lambda x: x[4], reverse=True):
-            plt.plot(cov, prec, label=f"{tool_name} (AUC = {auc_score:.3f})", linewidth=3.5)
+    for cov, prec, sc, tool, auc_score in sorted(zip(all_peptide_coverages, all_peptide_precisions, all_peptide_scores, tool_name_dict.keys(), peptide_auc_scores), key=lambda x: x[4], reverse=True):
+            plt.plot(cov, prec, label=f"{tool_name_dict[tool]} (AUC = {auc_score:.3f})", linewidth=3.5, color=tool_colors.get(tool))
 
     plt.xlabel("Coverage", fontsize=14)
     plt.ylabel("Precision", fontsize=14)
@@ -129,8 +134,8 @@ def plot_precision_coverage_curves(result_df, tool_name_dict, benchmark_dataset_
 
     # Plot aa precision vs. coverage with AUC scores
     plt.figure(figsize=(10, 6))
-    for cov, prec, sc, tool_name, auc_score in sorted(zip(all_aa_coverages, all_aa_precisions, all_aa_scores, tool_name_dict.values(), aa_auc_scores), key=lambda x: x[4], reverse=True):
-            plt.plot(cov, prec, label=f"{tool_name} (AUC = {auc_score:.3f})", linewidth=3.5)
+    for cov, prec, sc, tool, auc_score in sorted(zip(all_aa_coverages, all_aa_precisions, all_aa_scores, tool_name_dict.keys(), aa_auc_scores), key=lambda x: x[4], reverse=True):
+            plt.plot(cov, prec, label=f"{tool_name_dict[tool]} (AUC = {auc_score:.3f})", linewidth=3.5, color=tool_colors.get(tool))
             
 
     plt.xlabel("Coverage", fontsize=14)
