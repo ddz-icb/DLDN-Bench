@@ -55,7 +55,7 @@ def read_predictions(csv_file, selected_tools=None):
     csv_file : str
         Path to the CSV file
     selected_tools : list or None
-        List of specific tools to include, or None for all tools
+        List of specific tools to include, or None for all tools except MS-GF+
     
     Returns
     -------
@@ -98,8 +98,9 @@ def read_predictions(csv_file, selected_tools=None):
         tool_columns = selected_tools
         print(f"Using selected tools: {', '.join(tool_columns)}")
     else:
-        tool_columns = available_tools
-        print(f"Using all {len(tool_columns)} tools")
+        # MS-GF+ is the database search reference, not a de novo tool; it can be included via --tools
+        tool_columns = [tool for tool in available_tools if tool != 'msgfplus_percolator']
+        print(f"Using all {len(tool_columns)} de novo tools (MS-GF+ excluded, include it via --tools)")
     
     # Check number of tools
     if len(tool_columns) < 2:
@@ -379,7 +380,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
     Examples:
-    # Use all tools (Venn diagram and UpSet plot for up to 6 tools, only UpSet plot for more tools)
+    # Use all de novo tools (Venn diagram and UpSet plot for up to 6 tools, only UpSet plot for more tools)
     python create_overlap_plots.py my_dataset_benchmark_predictions.csv
 
     # Select specific tools
@@ -393,7 +394,7 @@ def main():
     
     parser.add_argument('csv_file', help='Path to the CSV file containing predictions')
     parser.add_argument('--tools', '-t', nargs='+', 
-                       help='Specific tools to include. If not specified, uses all tools.')
+                       help='Specific tools to include. If not specified, uses all tools except MS-GF+ (msgfplus_percolator).')
     parser.add_argument('--output', '-o', help='Output file path of the Venn diagram (default: auto-generated based on input)')
     parser.add_argument('--upset-output', help='Output file path of the UpSet plot (default: auto-generated based on input)')
     parser.add_argument('--title', help='Custom title for the plot')

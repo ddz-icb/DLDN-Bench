@@ -86,13 +86,13 @@ The database search (MS-GF+) and the de novo sequencing tools of the benchmark c
      --tables /path/to/results
 ```
 
-5. Optionally, run `create_overlap_plots.py` on the aligned predictions to compare which spectra the tools predict correctly (mass-based matching by default, `--exact` for exact string matching). For up to 6 tools, it creates a Venn diagram and an UpSet plot; for more tools, only an UpSet plot. The UpSet plot shows the 30 largest intersections (`--max-intersections`, `0` shows all). Use `--tools` to select the tools to compare (by default, all tools in the file are used, including InstaNovo+).
+5. Optionally, run `create_overlap_plots.py` on the aligned predictions to compare which spectra the tools predict correctly (mass-based matching by default, `--exact` for exact string matching). For up to 6 tools, it creates a Venn diagram and an UpSet plot; for more tools, only an UpSet plot. The UpSet plot shows the 30 largest intersections (`--max-intersections`, `0` shows all). Use `--tools` to select the tools to compare (by default, all de novo tools in the file are used, including InstaNovo+; MS-GF+ is the database search reference and is only included if selected with `--tools`).
 
    Your command should look like this:
 
 ```bash
    python create_overlap_plots.py /path/to/PXD006882_benchmark_predictions.csv \
-     --tools msgfplus_percolator pepnovoplus novor casanovo pi_helixnovo contranovo instanovo \
+     --tools pepnovoplus novor casanovo pi_helixnovo contranovo instanovo \
      --output /path/to/results/PXD006882_venn_plot.png \
      --upset-output /path/to/results/PXD006882_upset_plot.png
 ```

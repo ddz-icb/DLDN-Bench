@@ -32,9 +32,15 @@ class TestOverlapPlots(unittest.TestCase):
                 self.assertEqual(run_overlap_script(output_dir, tools), (True, True), f'{len(tools)} tools')
 
     def test_more_than_six_tools_creates_only_upset(self):
-        # the mini dataset contains predictions of 8 tools (incl. InstaNovo+)
+        # the mini dataset contains predictions of 7 de novo tools (incl. InstaNovo+) and MS-GF+
         with tempfile.TemporaryDirectory() as output_dir:
             self.assertEqual(run_overlap_script(output_dir), (False, True))
+
+    def test_msgfplus_excluded_by_default(self):
+        sys.path.insert(0, REPO_DIR)
+        from create_overlap_plots import read_predictions
+        self.assertNotIn('msgfplus_percolator', read_predictions(MINI_CSV)[1])
+        self.assertIn('msgfplus_percolator', read_predictions(MINI_CSV, ['msgfplus_percolator', 'casanovo'])[1])
 
 
 if __name__ == '__main__':
