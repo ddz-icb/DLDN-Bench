@@ -45,6 +45,7 @@ The database search (MS-GF+) and the de novo sequencing tools of the benchmark c
         |---------------|------------------------------|
         | SEQ1          | Score1                       | 
         | SEQ2          | Score2                       |
+        | SEQ3          | Score3                       |
         | ...           | ...                          | 
 
         - the predictions column should contain the predicted sequence and the scores should be the models confidence score or assigned probabilities
