@@ -8,7 +8,7 @@ Auf´m Hennekamp 65
 40225 Duesseldorf
 Germany
 
-Copyright (c) 2024, ddz-icb
+Copyright (c) 2026, ddz-icb
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
